@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1e6b4a">
+<title>IKPRA Karang Taruna</title>
+<style>
+:root{--hijau:#1e6b4a;--padi:#c9962b;--melati:#fbfaf6;--tinta:#1d2b24;--abu:#6b766f;--garis:#dfe5df}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.5 "Segoe UI",Roboto,sans-serif;background:var(--melati);color:var(--tinta);padding-bottom:84px}
+.pelangi{height:7px;background:linear-gradient(90deg,#e53935,#fb8c00,#fdd835,#43a047,#1e88e5,#8e24aa)}
+header{background:var(--hijau);color:#fff;padding:14px 18px;padding-top:calc(14px + env(safe-area-inset-top,0px));display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:22px;letter-spacing:.5px}
+header small{display:block;opacity:.8;font-size:13px}
+main{padding:16px;max-width:640px;margin:auto}
+article,.kotak{background:#fff;border:1px solid var(--garis);border-radius:10px;padding:12px 14px;margin:10px 0;position:relative}
+article p{margin:2px 0;color:var(--abu)}
+small{color:var(--abu)}
+.m{color:var(--abu);text-align:center;margin:28px 0}
+.err{color:#b3261e;background:#fdecea;padding:10px;border-radius:8px}
+.ok{color:var(--hijau);background:#e8f3ec;padding:10px;border-radius:8px}
+input,select,textarea{width:100%;font:inherit;padding:10px;border:1px solid var(--garis);border-radius:8px;margin:4px 0 10px;background:#fff}
+label{font-size:14px;color:var(--abu)}
+button{font:inherit;border:0;border-radius:8px;padding:11px 16px;background:var(--hijau);color:#fff;font-weight:600}
+button.x{position:absolute;top:8px;right:8px;background:none;color:#b3261e;padding:4px 8px;font-weight:400;font-size:14px}
+button.l{background:none;color:#fff;border:1px solid rgba(255,255,255,.5);padding:6px 12px;font-size:14px}
+details{margin:10px 0}
+summary{font-weight:600;color:var(--hijau);padding:8px 0}
+.saldo{background:var(--hijau);color:#fff;border-radius:10px;padding:16px;margin:4px 0 8px}
+.saldo b{display:block;font-size:28px;color:#f3d98b}
+.masuk{color:#2e7d32!important}.keluar{color:#c62828!important}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--garis);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;background:none;color:var(--abu);border-radius:0;padding:14px 4px;border-top:3px solid transparent}
+nav button.on{color:var(--hijau);border-top-color:var(--padi)}
+.login{max-width:380px;margin:40px auto;padding:0 18px}
+.login h2{margin:0 0 4px}
+@media(prefers-color-scheme:dark){:root{--melati:#121a16;--tinta:#e8efe9;--abu:#9aa8a0;--garis:#2b3a32}article,.kotak,input,select,textarea,nav{background:#1a251f}}
+</style>
+</head>
+<body>
+<div class="pelangi"></div>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SB_URL = 'https://fklwlibpiltnwfvudrro.supabase.co';
+const SB_KEY = 'sb_publishable_SV-ek8y9ffFeaZNC0Cxo9Q_kn5PQg1-';
+const sb = supabase.createClient(SB_URL, SB_KEY);
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rp = n => new Intl.NumberFormat('id-ID').format(n);
+const tgl = (d, jam) => new Date(d).toLocaleString('id-ID', jam
+  ? {day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}
+  : {day:'numeric',month:'long',year:'numeric'});
+
+let tab = 'pengumuman', peran = '';
+const boleh = () => peran === 'admin' || peran === 'pengurus';
+
+// f: [kolom, label, tipe, opsional?, pilihan?]
+const T = {
+  pengumuman: {label:'Info', order:['created_at',false],
+    f:[['judul','Judul','text'],['isi','Isi pengumuman','textarea']],
+    row:r=>`<b>${esc(r.judul)}</b><p>${esc(r.isi)}</p><small>${tgl(r.created_at)}</small>`},
+  agenda: {label:'Agenda', order:['waktu_mulai',false],
+    f:[['judul','Nama kegiatan','text'],['waktu_mulai','Waktu','datetime-local'],['lokasi','Lokasi','text',1]],
+    row:r=>`<b>${esc(r.judul)}</b><p>${tgl(r.waktu_mulai,1)}${r.lokasi?', '+esc(r.lokasi):''}</p>`},
+  anggota: {label:'Anggota', order:['nama',true],
+    f:[['nama','Nama lengkap','text'],['no_hp','No. HP','tel',1],['email','Email','email',1],['jabatan','Jabatan','text',1]],
+    row:r=>`<b>${esc(r.nama)}</b><p>${esc(r.jabatan||'Anggota')}${r.no_hp?', '+esc(r.no_hp):''}</p>`},
+  kas: {label:'Kas', order:['tanggal',false],
+    f:[['jenis','Jenis','select',0,['masuk','keluar']],['jumlah','Jumlah (Rp)','number'],['keterangan','Keterangan','text',1]],
+    head:rows=>{const s=rows.reduce((a,r)=>a+(r.jenis==='masuk'?1:-1)*Number(r.jumlah),0);
+      return `<div class="saldo">Saldo kas<b>Rp ${rp(s)}</b></div>`},
+    row:r=>`<b>${esc(r.keterangan||r.jenis)}</b><p class="${r.jenis}">${r.jenis==='masuk'?'+':'-'} Rp ${rp(r.jumlah)}, ${tgl(r.tanggal)}</p>`}
+};
+
+function layarLogin(pesan, tipe) {
+  $('#app').innerHTML = `<div class="login"><h2>IKPRA</h2>
+    <p class="m" style="text-align:left;margin:0 0 18px">Masuk dengan email yang sudah didaftarkan admin.</p>
+    <label>Email</label><input id="em" type="email" placeholder="nama@gmail.com" autocomplete="email">
+    <button id="kirim">Kirim tautan masuk</button>
+    ${pesan?`<p class="${tipe}" style="margin-top:14px">${pesan}</p>`:''}</div>`;
+  $('#kirim').onclick = async () => {
+    const email = $('#em').value.trim();
+    if (!email) return layarLogin('Isi email dulu.', 'err');
+    $('#kirim').disabled = true;
+    const {error} = await sb.auth.signInWithOtp({email, options:{emailRedirectTo: location.origin + location.pathname}});
+    layarLogin(error ? 'Gagal mengirim: ' + esc(error.message) : 'Tautan terkirim. Buka email Anda, lalu tekan tautannya.', error ? 'err' : 'ok');
+  };
+}
+
+async function masuk() {
+  $('#app').innerHTML = '<p class="m">Memuat…</p>';
+  const {data, error} = await sb.rpc('hubungkan_akun');
+  if (error || !data) {
+    $('#app').innerHTML = `<div class="login"><h2>Belum terdaftar</h2>
+      <p class="err">${error ? esc(error.message) : 'Email ini belum terdaftar sebagai anggota. Hubungi admin IKPRA.'}</p>
+      <button id="out">Keluar</button></div>`;
+    $('#out').onclick = () => sb.auth.signOut();
+    return;
+  }
+  peran = data;
+  $('#app').innerHTML = `<header><div><h1>IKPRA</h1><small>Karang Taruna, masuk sebagai ${esc(peran)}</small></div>
+    <button class="l" id="out">Keluar</button></header>
+    <main id="isi"></main>
+    <nav>${Object.keys(T).map(k=>`<button data-t="${k}">${T[k].label}</button>`).join('')}</nav>`;
+  $('#out').onclick = () => sb.auth.signOut();
+  document.querySelector('nav').onclick = e => { const k = e.target.dataset.t; if (k) tampil(k); };
+  tampil(tab);
+}
+
+function formHtml(k) {
+  const c = T[k];
+  const isi = c.f.map(([n,l,t,opt,pil]) => {
+    const req = opt ? '' : 'required';
+    const el = t==='textarea' ? `<textarea name="${n}" rows="3" ${req}></textarea>`
+      : t==='select' ? `<select name="${n}">${pil.map(p=>`<option>${p}</option>`).join('')}</select>`
+      : `<input name="${n}" type="${t}" ${req}>`;
+    return `<label>${l}${opt?' (boleh kosong)':''}</label>${el}`;
+  }).join('');
+  return `<details><summary>+ Tambah ${c.label.toLowerCase()}</summary><form class="kotak" data-k="${k}">${isi}<button>Simpan</button></form></details>`;
+}
+
+async function tampil(k) {
+  tab = k;
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === k));
+  const c = T[k], el = $('#isi');
+  el.innerHTML = '<p class="m">Memuat…</p>';
+  const {data, error} = await sb.from(k).select('*').order(c.order[0], {ascending:c.order[1]});
+  if (error) { el.innerHTML = `<p class="err">Gagal memuat: ${esc(error.message)}</p>`; return; }
+  let h = c.head ? c.head(data) : '';
+  if (boleh()) h += formHtml(k);
+  h += data.length
+    ? data.map(r=>`<article>${c.row(r)}${boleh()?`<button class="x" data-del="${r.id}">Hapus</button>`:''}</article>`).join('')
+    : '<p class="m">Belum ada data. Tambahkan yang pertama.</p>';
+  el.innerHTML = h;
+}
+
+document.addEventListener('click', async e => {
+  const id = e.target.dataset && e.target.dataset.del;
+  if (!id || !confirm('Hapus data ini?')) return;
+  const {error} = await sb.from(tab).delete().eq('id', id);
+  if (error) alert('Gagal menghapus: ' + error.message); else tampil(tab);
+});
+
+document.addEventListener('submit', async e => {
+  const f = e.target; if (!f.dataset.k) return;
+  e.preventDefault();
+  const k = f.dataset.k, row = {};
+  T[k].f.forEach(([n,,t]) => {
+    let v = new FormData(f).get(n).trim();
+    if (v === '') v = null;
+    else if (t === 'number') v = Number(v);
+    else if (t === 'datetime-local') v = new Date(v).toISOString();
+    row[n] = v;
+  });
+  const {error} = await sb.from(k).insert(row);
+  if (error) alert('Gagal menyimpan: ' + error.message); else tampil(k);
+});
+
+sb.auth.onAuthStateChange((ev, s) => { if (ev === 'SIGNED_OUT') layarLogin(); });
+sb.auth.getSession().then(({data}) => data.session ? masuk() : layarLogin());
+</script>
+</body>
+</html>
