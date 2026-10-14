@@ -37,6 +37,15 @@ nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-t
 .tag{display:block;font-size:10.5px;line-height:1.25;letter-spacing:.4px;font-weight:600;color:#f3d98b;margin:1px 0 3px}
 .login .tag{font-size:12px;color:var(--padi);margin:0 0 14px}
 button.s{background:none;color:var(--hijau);border:1px solid var(--hijau);padding:6px 12px;font-size:14px;margin-top:6px}
+.gel{max-width:84%;background:#fff;color:#1d2b24;border:1px solid var(--garis);border-radius:12px;padding:8px 12px;margin:6px auto 6px 0;overflow-wrap:anywhere}
+.gel.sy{background:var(--hijau);color:#fff;border-color:var(--hijau);margin:6px 0 6px auto}
+.gel span{white-space:pre-wrap}
+.gel small{display:block;color:inherit;opacity:.7;font-size:12px}
+button.hp{background:none;color:inherit;padding:0 4px;font-size:12px;font-weight:400;text-decoration:underline}
+#pesan{padding-bottom:70px}
+.kirim{position:fixed;left:0;right:0;bottom:calc(50px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;padding:8px 12px;background:var(--melati);border-top:1px solid var(--garis)}
+.kirim input{margin:0;flex:1}
+.kirim button{padding:10px 16px}
 .brand{display:flex;align-items:center;gap:12px}
 .logo{width:46px;height:46px;border-radius:12px;background:#fff;padding:2px}
 .login img.logo{width:104px;height:104px;display:block;margin:0 0 14px;border-radius:22px;padding:4px;border:1px solid var(--garis)}
@@ -81,6 +90,7 @@ const T = {
   galeri: {label:'Galeri', order:['created_at',false],
     f:[['judul','Nama album','text'],['link_drive','Tautan Google Drive','url']],
     row:r=>`<b>${esc(r.judul)}</b><p>${/^https?:\/\//i.test(r.link_drive)?`<a href="${esc(r.link_drive)}" target="_blank" rel="noopener">Buka album</a>`:'Tautan tidak valid'}</p><small>${tgl(r.created_at)}</small>`},
+  chat: {label:'Chat', custom:true},
   anggota: {label:'Anggota', order:['nama',true],
     f:[['nama','Nama lengkap','text'],['no_hp','No. WhatsApp (contoh 0812xxxx)','tel',1],['email','Email','email',1],['jabatan','Jabatan','text',1]],
     row:r=>`<b>${esc(r.nama)}</b><p>${esc(r.jabatan||'Anggota')}</p>${r.no_hp?`<p><a href="https://wa.me/${wa(r.no_hp)}" target="_blank" rel="noopener">Chat WhatsApp, ${esc(r.no_hp)}</a></p>`:''}`},
@@ -132,7 +142,7 @@ function formHtml(k) {
     const req = opt ? '' : 'required';
     const el = t==='textarea' ? `<textarea name="${n}" rows="3" ${req}></textarea>`
       : t==='select' ? `<select name="${n}">${pil.map(p=>`<option>${p}</option>`).join('')}</select>`
-      : `<input name="${n}" type="${t}" ${req}>`;
+      : `<input name="${n}" type="${t}" ${req} autocomplete="off">`;
     return `<label>${l}${opt?' (boleh kosong)':''}</label>${el}`;
   }).join('');
   return `<details><summary>+ Tambah ${c.label.toLowerCase()}</summary><form class="kotak" data-k="${k}">${isi}<button>Simpan</button></form></details>`;
@@ -140,18 +150,84 @@ function formHtml(k) {
 
 async function tampil(k) {
   tab = k;
+  if (kanal) { sb.removeChannel(kanal); kanal = null; }
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === k));
   const c = T[k], el = $('#isi');
-  if (c.custom) { iuranAg = null; return tampilIuran(); }
+  if (c.custom) { chatLawan = undefined; return tampilChat(); }
   el.innerHTML = '<p class="m">Memuat…</p>';
   const {data, error} = await sb.from(k).select('*').order(c.order[0], {ascending:c.order[1]});
   if (error) { el.innerHTML = `<p class="err">Gagal memuat: ${esc(error.message)}</p>`; return; }
   let h = c.head ? c.head(data) : '';
   if (boleh()) h += formHtml(k);
   h += data.length
-    ? data.map(r=>`<article>${c.row(r)}${boleh()?`<button class="x" data-del="${r.id}">Hapus</button>`:''}</article>`).join('')
+    ? data.map(r=>`<article>${c.row(r)}${boleh() && !(k === 'anggota' && r.peran === 'admin') ?`<button class="x" data-del="${r.id}">Hapus</button>`:''}</article>`).join('')
     : '<p class="m">Belum ada data. Tambahkan yang pertama.</p>';
   el.innerHTML = h;
+}
+
+let saya = null, chatLawan, kanal = null, namaAng = {};
+const jam = d => new Date(d).toLocaleString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+const gelembung = r => {
+  const sy = r.pengirim_id === saya;
+  const nama = chatLawan === 'grup' && !sy ? `<small>${esc(namaAng[r.pengirim_id] || 'Anggota')}</small>` : '';
+  const hapus = (sy || peran === 'admin') ? `<button class="hp" data-hpus="${r.id}">hapus</button>` : '';
+  return `<div class="gel ${sy ? 'sy' : ''}" id="m-${r.id}">${nama}<span>${esc(r.isi)}</span><small>${jam(r.created_at)} ${hapus}</small></div>`;
+};
+function tambahPesan(r) {
+  const b = $('#pesan');
+  if (!b || document.getElementById('m-' + r.id)) return;
+  if (b.querySelector('.m')) b.innerHTML = '';
+  b.insertAdjacentHTML('beforeend', gelembung(r));
+  window.scrollTo(0, document.body.scrollHeight);
+}
+async function tampilChat() {
+  const el = $('#isi');
+  el.innerHTML = '<p class="m">Memuat…</p>';
+  if (!saya) { const r = await sb.rpc('anggota_id_saya'); saya = r.data; }
+  const {data, error} = await sb.from('anggota').select('id,nama,jabatan').order('nama');
+  if (error) { el.innerHTML = `<p class="err">Gagal memuat: ${esc(error.message)}</p>`; return; }
+  namaAng = Object.fromEntries(data.map(a => [a.id, a.nama]));
+  el.innerHTML = '<article data-chat="grup" style="cursor:pointer"><b>Grup IKPRA</b><p>Semua anggota</p></article>'
+    + '<p class="m" style="margin:16px 0 2px;text-align:left">Chat pribadi</p>'
+    + data.filter(a => a.id !== saya).map(a => `<article data-chat="${a.id}" data-nama="${esc(a.nama)}" style="cursor:pointer"><b>${esc(a.nama)}</b><p>${esc(a.jabatan || 'Anggota')}</p></article>`).join('');
+}
+async function bukaChat(lawan, nama) {
+  chatLawan = lawan;
+  const el = $('#isi');
+  el.innerHTML = `<button class="b" data-cback>← Daftar chat</button><h3 style="margin:0 0 6px">${esc(nama)}</h3>
+    <div id="pesan"><p class="m">Memuat…</p></div>
+    <div class="kirim"><input id="ketik" placeholder="Tulis pesan…" maxlength="2000" autocomplete="off"><button id="btnk">Kirim</button></div>`;
+  let q = sb.from('pesan').select('*').order('created_at', {ascending:false}).limit(60);
+  q = lawan === 'grup' ? q.is('penerima_id', null)
+    : q.or(`and(pengirim_id.eq.${saya},penerima_id.eq.${lawan}),and(pengirim_id.eq.${lawan},penerima_id.eq.${saya})`);
+  const {data, error} = await q;
+  const box = $('#pesan');
+  if (!box) return;
+  if (error) { box.innerHTML = `<p class="err">Gagal memuat: ${esc(error.message)}</p>`; return; }
+  box.innerHTML = data.length ? data.reverse().map(gelembung).join('') : '<p class="m">Belum ada pesan. Mulai percakapan.</p>';
+  window.scrollTo(0, document.body.scrollHeight);
+  if (kanal) sb.removeChannel(kanal);
+  kanal = sb.channel('pesan-' + Date.now())
+    .on('postgres_changes', {event:'INSERT', schema:'public', table:'pesan'}, p => {
+      const r = p.new;
+      const cocok = lawan === 'grup' ? r.penerima_id === null
+        : (r.pengirim_id === saya && r.penerima_id === lawan) || (r.pengirim_id === lawan && r.penerima_id === saya);
+      if (cocok) tambahPesan(r);
+    })
+    .on('postgres_changes', {event:'DELETE', schema:'public', table:'pesan'}, p => {
+      const n = document.getElementById('m-' + p.old.id); if (n) n.remove();
+    })
+    .subscribe();
+  const kirim = async () => {
+    const inp = $('#ketik'), isi = inp.value.trim();
+    if (!isi) return;
+    inp.value = '';
+    const {data: r, error: err} = await sb.from('pesan').insert({pengirim_id:saya, penerima_id: lawan === 'grup' ? null : lawan, isi}).select().single();
+    if (err) { alert('Gagal mengirim: ' + err.message); inp.value = isi; return; }
+    tambahPesan(r);
+  };
+  $('#btnk').onclick = kirim;
+  $('#ketik').onkeydown = e => { if (e.key === 'Enter') kirim(); };
 }
 
 let iuranAg = null, iuranNom = 0;
@@ -186,9 +262,18 @@ async function tampilIuran() {
 }
 
 document.addEventListener('click', async e => {
-  const d = e.target.closest('[data-del],[data-ag],[data-back],[data-tog]');
+  const d = e.target.closest('[data-del],[data-ag],[data-back],[data-tog],[data-chat],[data-cback],[data-hpus]');
   if (!d) return;
   const s = d.dataset;
+  if (s.chat) return bukaChat(s.chat, s.chat === 'grup' ? 'Grup IKPRA' : s.nama);
+  if ('cback' in s) { chatLawan = undefined; if (kanal) { sb.removeChannel(kanal); kanal = null; } return tampilChat(); }
+  if (s.hpus) {
+    if (!confirm('Hapus pesan ini?')) return;
+    const {error} = await sb.from('pesan').delete().eq('id', s.hpus);
+    if (error) alert('Gagal menghapus: ' + error.message);
+    else { const n = document.getElementById('m-' + s.hpus); if (n) n.remove(); }
+    return;
+  }
   if (s.ag) { iuranAg = s.ag; return tampilIuran(); }
   if ('back' in s) { iuranAg = null; return tampil('agenda'); }
   if (s.tog) {
@@ -216,11 +301,11 @@ document.addEventListener('submit', async e => {
     if (v !== null) row[n] = v;
   });
   const {error} = await sb.from(k).insert(row);
-  if (error) alert('Gagal menyimpan: ' + error.message); else tampil(k);
+  if (error) alert(error.code === '23505' ? 'Data ini sudah terdaftar: email atau nomor yang sama sudah ada.' : 'Gagal menyimpan: ' + error.message); else tampil(k);
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-sb.auth.onAuthStateChange((ev, s) => { if (ev === 'SIGNED_OUT') layarLogin(); });
+sb.auth.onAuthStateChange((ev, s) => { if (ev === 'SIGNED_OUT') { saya = null; layarLogin(); } });
 sb.auth.getSession().then(({data}) => data.session ? masuk() : layarLogin());
 </script>
 </body>
