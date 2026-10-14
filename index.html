@@ -32,7 +32,10 @@ summary{font-weight:600;color:var(--hijau);padding:8px 0}
 .masuk{color:#2e7d32!important}.keluar{color:#c62828!important}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--garis);padding-bottom:env(safe-area-inset-bottom,0px)}
 article a{color:var(--hijau);font-weight:600}
-nav button{flex:1;background:none;color:var(--abu);border-radius:0;padding:14px 2px;font-size:14px;border-top:3px solid transparent}
+button.t{position:absolute;top:10px;right:10px;padding:6px 12px;font-size:14px}
+button.t.o{background:none;color:var(--abu);border:1px solid var(--garis)}
+button.b{background:none;color:var(--hijau);padding:8px 0;font-weight:600}
+nav button{flex:1;background:none;color:var(--abu);border-radius:0;padding:14px 1px;font-size:13px;border-top:3px solid transparent}
 nav button.on{color:var(--hijau);border-top-color:var(--padi)}
 .login{max-width:380px;margin:40px auto;padding:0 18px}
 .login h2{margin:0 0 4px}
@@ -63,11 +66,12 @@ const T = {
     f:[['judul','Judul','text'],['isi','Isi pengumuman','textarea']],
     row:r=>`<b>${esc(r.judul)}</b><p>${esc(r.isi)}</p><small>${tgl(r.created_at)}</small>`},
   agenda: {label:'Agenda', order:['waktu_mulai',false],
-    f:[['judul','Nama kegiatan','text'],['waktu_mulai','Waktu','datetime-local'],['lokasi','Lokasi','text',1]],
-    row:r=>`<b>${esc(r.judul)}</b><p>${tgl(r.waktu_mulai,1)}${r.lokasi?', '+esc(r.lokasi):''}</p>`},
+    f:[['judul','Nama kegiatan','text'],['waktu_mulai','Waktu','datetime-local'],['lokasi','Lokasi','text',1],['iuran_per_orang','Iuran per orang (Rp)','number',1]],
+    row:r=>`<b>${esc(r.judul)}</b><p>${tgl(r.waktu_mulai,1)}${r.lokasi?', '+esc(r.lokasi):''}</p>${Number(r.iuran_per_orang)>0?`<p>Iuran Rp ${rp(r.iuran_per_orang)} per orang</p>`:''}`},
   galeri: {label:'Galeri', order:['created_at',false],
     f:[['judul','Nama album','text'],['link_drive','Tautan Google Drive','url']],
     row:r=>`<b>${esc(r.judul)}</b><p>${/^https?:\/\//i.test(r.link_drive)?`<a href="${esc(r.link_drive)}" target="_blank" rel="noopener">Buka album</a>`:'Tautan tidak valid'}</p><small>${tgl(r.created_at)}</small>`},
+  iuran: {label:'Iuran', custom:true},
   anggota: {label:'Anggota', order:['nama',true],
     f:[['nama','Nama lengkap','text'],['no_hp','No. HP','tel',1],['email','Email','email',1],['jabatan','Jabatan','text',1]],
     row:r=>`<b>${esc(r.nama)}</b><p>${esc(r.jabatan||'Anggota')}${r.no_hp?', '+esc(r.no_hp):''}</p>`},
@@ -129,6 +133,7 @@ async function tampil(k) {
   tab = k;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === k));
   const c = T[k], el = $('#isi');
+  if (c.custom) { iuranAg = null; return tampilIuran(); }
   el.innerHTML = '<p class="m">Memuat…</p>';
   const {data, error} = await sb.from(k).select('*').order(c.order[0], {ascending:c.order[1]});
   if (error) { el.innerHTML = `<p class="err">Gagal memuat: ${esc(error.message)}</p>`; return; }
@@ -140,10 +145,53 @@ async function tampil(k) {
   el.innerHTML = h;
 }
 
+let iuranAg = null, iuranNom = 0;
+async function tampilIuran() {
+  const el = $('#isi');
+  el.innerHTML = '<p class="m">Memuat…</p>';
+  if (!iuranAg) {
+    const {data, error} = await sb.from('agenda').select('id,judul,waktu_mulai,iuran_per_orang').order('waktu_mulai', {ascending:false});
+    if (error) { el.innerHTML = `<p class="err">Gagal memuat: ${esc(error.message)}</p>`; return; }
+    el.innerHTML = data.length
+      ? '<p class="m" style="margin:4px 0">Pilih kegiatan untuk melihat iuran.</p>' + data.map(a=>`<article data-ag="${a.id}" style="cursor:pointer"><b>${esc(a.judul)}</b><p>${tgl(a.waktu_mulai)}, Rp ${rp(a.iuran_per_orang)} per orang</p></article>`).join('')
+      : '<p class="m">Belum ada agenda. Buat dulu di tab Agenda.</p>';
+    return;
+  }
+  const [ag, ang, iu] = await Promise.all([
+    sb.from('agenda').select('judul,iuran_per_orang').eq('id', iuranAg).single(),
+    sb.from('anggota').select('id,nama').eq('aktif', true).order('nama'),
+    sb.from('iuran').select('*').eq('agenda_id', iuranAg)]);
+  const err = ag.error || ang.error || iu.error;
+  if (err) { el.innerHTML = `<p class="err">Gagal memuat: ${esc(err.message)}</p>`; return; }
+  iuranNom = Number(ag.data.iuran_per_orang);
+  const lunas = new Set(iu.data.filter(r=>r.status==='lunas').map(r=>r.anggota_id));
+  const total = iu.data.filter(r=>r.status==='lunas').reduce((a,r)=>a+Number(r.jumlah), 0);
+  el.innerHTML = `<button class="b" data-back>← Semua kegiatan</button>
+    <div class="saldo">${esc(ag.data.judul)}<b>Rp ${rp(total)}</b>${lunas.size} dari ${ang.data.length} anggota lunas, target Rp ${rp(iuranNom * ang.data.length)}</div>`
+    + (iuranNom > 0 ? '' : '<p class="err">Nominal iuran kegiatan ini belum diisi, jadi tercatat Rp 0.</p>')
+    + ang.data.map(a => {
+        const l = lunas.has(a.id);
+        return `<article><b>${esc(a.nama)}</b><p class="${l?'masuk':'keluar'}">${l?'Lunas':'Belum bayar'}</p>`
+          + (boleh() ? `<button class="t ${l?'o':''}" data-tog="${a.id}" data-sudah="${l?1:0}">${l?'Batalkan':'Tandai lunas'}</button>` : '') + '</article>';
+      }).join('');
+}
+
 document.addEventListener('click', async e => {
-  const id = e.target.dataset && e.target.dataset.del;
-  if (!id || !confirm('Hapus data ini?')) return;
-  const {error} = await sb.from(tab).delete().eq('id', id);
+  const d = e.target.closest('[data-del],[data-ag],[data-back],[data-tog]');
+  if (!d) return;
+  const s = d.dataset;
+  if (s.ag) { iuranAg = s.ag; return tampilIuran(); }
+  if ('back' in s) { iuranAg = null; return tampilIuran(); }
+  if (s.tog) {
+    const q = s.sudah === '1'
+      ? sb.from('iuran').delete().eq('agenda_id', iuranAg).eq('anggota_id', s.tog)
+      : sb.from('iuran').upsert({agenda_id:iuranAg, anggota_id:s.tog, jumlah:iuranNom, status:'lunas', tanggal_bayar:new Date().toISOString().slice(0,10)}, {onConflict:'agenda_id,anggota_id'});
+    const {error} = await q;
+    if (error) alert('Gagal menyimpan: ' + error.message); else tampilIuran();
+    return;
+  }
+  if (!confirm('Hapus data ini?')) return;
+  const {error} = await sb.from(tab).delete().eq('id', s.del);
   if (error) alert('Gagal menghapus: ' + error.message); else tampil(tab);
 });
 
@@ -156,7 +204,7 @@ document.addEventListener('submit', async e => {
     if (v === '') v = null;
     else if (t === 'number') v = Number(v);
     else if (t === 'datetime-local') v = new Date(v).toISOString();
-    row[n] = v;
+    if (v !== null) row[n] = v;
   });
   const {error} = await sb.from(k).insert(row);
   if (error) alert('Gagal menyimpan: ' + error.message); else tampil(k);
