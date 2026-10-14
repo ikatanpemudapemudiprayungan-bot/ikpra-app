@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1e6b4a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>IKPRA Karang Taruna</title>
 <style>
 :root{--hijau:#1e6b4a;--padi:#c9962b;--melati:#fbfaf6;--tinta:#1d2b24;--abu:#6b766f;--garis:#dfe5df}
@@ -31,6 +34,9 @@ summary{font-weight:600;color:var(--hijau);padding:8px 0}
 .saldo b{display:block;font-size:28px;color:#f3d98b}
 .masuk{color:#2e7d32!important}.keluar{color:#c62828!important}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--garis);padding-bottom:env(safe-area-inset-bottom,0px)}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:46px;height:46px;border-radius:12px;background:#fff;padding:2px}
+.login img.logo{width:104px;height:104px;display:block;margin:0 0 14px;border-radius:22px;padding:4px;border:1px solid var(--garis)}
 article a{color:var(--hijau);font-weight:600}
 button.t{position:absolute;top:10px;right:10px;padding:6px 12px;font-size:14px}
 button.t.o{background:none;color:var(--abu);border:1px solid var(--garis)}
@@ -83,7 +89,7 @@ const T = {
 };
 
 function layarLogin(pesan, tipe) {
-  $('#app').innerHTML = `<div class="login"><h2>IKPRA</h2>
+  $('#app').innerHTML = `<div class="login"><img class="logo" src="logo.png" alt="Logo IKPRA"><h2>IKPRA</h2>
     <p class="m" style="text-align:left;margin:0 0 18px">Masuk dengan email yang sudah didaftarkan admin.</p>
     <label>Email</label><input id="em" type="email" placeholder="nama@gmail.com" autocomplete="email">
     <button id="kirim">Kirim tautan masuk</button>
@@ -108,7 +114,7 @@ async function masuk() {
     return;
   }
   peran = data;
-  $('#app').innerHTML = `<header><div><h1>IKPRA</h1><small>Karang Taruna, masuk sebagai ${esc(peran)}</small></div>
+  $('#app').innerHTML = `<header><div class="brand"><img class="logo" src="logo.png" alt="Logo IKPRA"><div><h1>IKPRA</h1><small>Karang Taruna, masuk sebagai ${esc(peran)}</small></div></div>
     <button class="l" id="out">Keluar</button></header>
     <main id="isi"></main>
     <nav>${Object.keys(T).map(k=>`<button data-t="${k}">${T[k].label}</button>`).join('')}</nav>`;
@@ -210,6 +216,7 @@ document.addEventListener('submit', async e => {
   if (error) alert('Gagal menyimpan: ' + error.message); else tampil(k);
 });
 
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 sb.auth.onAuthStateChange((ev, s) => { if (ev === 'SIGNED_OUT') layarLogin(); });
 sb.auth.getSession().then(({data}) => data.session ? masuk() : layarLogin());
 </script>
